@@ -1,3 +1,6 @@
+import threading
+import time
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -8,10 +11,15 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from libspectrumanalyzer import SpectrumAnalyzer
 
-fig = plt.figure(1, figsize=(15, 8))
-fig.subplots_adjust(top=0.85)
-axspectrum = fig.add_subplot(121)
-axspectrum3d = fig.add_subplot(122, projection='3d')
+figspectrum3d = plt.figure(1, figsize=(7.5, 4))
+axspectrum3d = figspectrum3d.add_subplot(111, projection='3d')
+
+figspectrogram = plt.figure(2, figsize=(7.5, 4))
+axspectrogram = figspectrogram.add_subplot(111)
+
+figspectrum = plt.figure(3, figsize=(15, 4))
+figspectrum.subplots_adjust(top=0.85)
+axspectrum = figspectrum.add_subplot(111)
 
 def displayspectrum(rsa):
     axspectrum.set_title('Spectrum')
@@ -19,61 +27,98 @@ def displayspectrum(rsa):
     axspectrum.set_ylabel('Amplitude (dBm)')
 
 def updatespectrum(frameNum, rsa):
-    if (rsa.initiate == True):
-        N = 1
+    if (rsa.initiate == True and rsa.readyToSpectrumDisplay == True):
         #print(frameNum)
 
-        spectrum = rsa.getSpectrumTrace()
+        axspectrum.set_xlim(rsa.freqMin, rsa.freqMax)
+        axspectrum.set_ylim(rsa.refLevel - 80, rsa.refLevel)
 
-        if(len(spectrum) == rsa.tracePoints):
+        for i, line in enumerate(axspectrum.lines):
+            axspectrum.lines.pop(i)
+            try:
+                line.remove()
+            except:
+                pass
 
-            for i, line in enumerate(axspectrum.lines):
-                axspectrum.lines.pop(i)
-                try:
-                    line.remove()
-                except:
-                    pass
+        axspectrum.plot(rsa.freq, rsa.trace, 'y')
 
-            axspectrum.set_xlim(rsa.freqMin / 1e9, rsa.freqMax / 1e9)
-            axspectrum.set_ylim(rsa.refLevel - 80, rsa.refLevel)
-            axspectrum.plot(rsa.freq / 1e9, spectrum, 'y')
+def displayspectrogram(rsa):
+    axspectrogram.set_title('Spectrogram')
+    axspectrogram.set_xlabel('Frequency (GHz)')
+    rsa.Z = []
+
+def updatespectrogram(frameNum, rsa):
+    if (rsa.initiate == True and rsa.readyToSpectrum3dDisplay == True):
+        #print(frameNum)
+
+        axspectrogram.set_xlim(rsa.freqMin, rsa.freqMax)
+        #axspectrogram.set_ylim(0, N-1)
+
+        try:
+            rsa.spectrogram.remove()
+        except:
+            pass
+
+        try:
+            rsa.spectrogram = axspectrogram.pcolormesh(rsa.mX, rsa.mY, rsa.aZ, cmap=cm.coolwarm, vmin=rsa.refLevel - 80, vmax=rsa.refLevel, shading='gouraud')
+        except:
+            pass
+
+        plt.draw()
 
 def displayspectrum3d(rsa):
     axspectrum3d.set_title('Spectrum (3D)')
     axspectrum3d.set_xlabel('Frequency (GHz)')
     axspectrum3d.set_zlabel('Amplitude (dBm)')
-    rsa.spectrum3d = None
     rsa.Z = []
 
 def updatespectrum3d(frameNum, rsa):
-    if (rsa.initiate == True):
-        N = 50
+    if (rsa.initiate == True and rsa.readyToSpectrum3dDisplay == True):
         #print(frameNum)
 
-        spectrum = rsa.getSpectrumTrace()
+        axspectrum3d.set_zlim(rsa.refLevel - 80, rsa.refLevel)
 
-        if(len(spectrum) == rsa.tracePoints):
+        try:
+            rsa.spectrum3d.remove()
+        except:
+            pass
+
+        try:
+            rsa.spectrum3d = axspectrum3d.plot_surface(rsa.mX, rsa.mY, rsa.aZ, cmap=cm.coolwarm, vmin=rsa.refLevel - 80, vmax=rsa.refLevel)
+        except:
+            pass
+
+def updatespectrumdata(rsa):
+    while (rsa.readyToTerminate == False):
+        if(len(rsa.trace) == rsa.tracePoints):
+            rsa.readyToSpectrumDisplay = True
+        else:
+            rsa.readyToSpectrumDisplay = False
+
+        time.sleep(0.001)
+
+def updatespectrum3ddata(rsa, N):
+    while (rsa.readyToTerminate == False):
+        if(len(rsa.trace) == rsa.tracePoints):
+
             if (len(rsa.Z) == N):
-                X = rsa.freq
-                Y = np.arange(0, N, 1)
-                X, Y = np.meshgrid(X, Y)
-                Z = np.array(rsa.Z)
+                rsa.X = rsa.freq
+                rsa.Y = np.arange(0, N, 1)
+                rsa.mX, rsa.mY = np.meshgrid(rsa.X, rsa.Y)
+                rsa.aZ = np.array(rsa.Z)
 
-                try:
-                    rsa.spectrum3d.remove()
-                except:
-                    pass
-
-                axspectrum3d.set_zlim(rsa.refLevel - 80, rsa.refLevel)
-                rsa.spectrum3d = axspectrum3d.plot_surface(X, Y, Z, cmap=cm.coolwarm, linewidth=0, antialiased=False)
-                
                 #rsa.Z[:-1] = rsa.Z[1:]
-                #rsa.Z[-1] = list(spectrum)
+                #rsa.Z[-1] = list(rsa.trace)
                 rsa.Z.pop()
+            else:                
+                #rsa.Z.append(list(rsa.trace))
+                rsa.Z.insert(0, list(rsa.trace))
 
-            else:
-                #rsa.Z.append(list(spectrum))
-                rsa.Z.insert(0, list(spectrum))
+            rsa.readyToSpectrum3dDisplay = True
+        else:
+            rsa.readyToSpectrum3dDisplay = False
+
+        time.sleep(0.01) 
 
 def sap(ipAddress, port):
     rsa = SpectrumAnalyzer(host=ipAddress, port=port)
@@ -113,12 +158,22 @@ def sap(ipAddress, port):
     brun.on_clicked(rsa.run)
     bstop.on_clicked(rsa.stop)
 
-    anispectrum = FuncAnimation(plt.gcf(), updatespectrum, fargs=(rsa,), init_func=displayspectrum(rsa), interval=1, blit=False)
-    anispectrum3d = FuncAnimation(plt.gcf(), updatespectrum3d, fargs=(rsa,), init_func=displayspectrum3d(rsa), interval=1, blit=False)
+    anispectrum = FuncAnimation(figspectrum, updatespectrum, fargs=(rsa,), init_func=displayspectrum(rsa), interval=1, blit=False)
+    anispectrogram = FuncAnimation(figspectrogram, updatespectrogram, fargs=(rsa,), init_func=displayspectrogram(rsa), interval=50, blit=False)
+    anispectrum3d = FuncAnimation(figspectrum3d, updatespectrum3d, fargs=(rsa,), init_func=displayspectrum3d(rsa), interval=50, blit=False)
 
-    fig.canvas.mpl_connect('close_event', rsa.disconnect)
-    
+    figspectrum.canvas.mpl_connect('close_event', rsa.disconnect)
+
+    rsa.readyToTerminate = False
+
+    tspectrum = threading.Thread(target=updatespectrumdata, args=(rsa,))
+    tspectrum.start()
+    tspectrum3d = threading.Thread(target=updatespectrum3ddata, args=(rsa,50,))
+    tspectrum3d.start()
+
     plt.show()
+
+    rsa.readyToTerminate = True
 
     try:
         rsa.disconnect()
