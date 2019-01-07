@@ -18,7 +18,10 @@ class SpectrumAnalyzer:
         self.span = 100e6
         self.refLevel = -40
 
-        self.recalculateFrequency()
+        self.calculateFrequency()
+
+        self.readyToSpectrumDisplay = False
+        self.readyToSpectrum3dDisplay = False
         
     def connect(self, event=None):
         self.si = SocketInstrument(self.host, self.port, self.timeout)
@@ -53,7 +56,7 @@ class SpectrumAnalyzer:
     def setCenterFrequency(self, cf):
         self.cf = cf
         self.write('spectrum:frequency:center {}'.format(self.cf))
-        self.recalculateFrequency()
+        self.calculateFrequency()
 
     def setSpanMHz(self, spanMHz):
         self.setSpan(np.float32(spanMHz) * 1e6)
@@ -61,9 +64,9 @@ class SpectrumAnalyzer:
     def setSpan(self, span):
         self.span = span
         self.write('spectrum:frequency:span {}'.format(self.span))
-        self.recalculateFrequency()
+        self.calculateFrequency()
 
-    def recalculateFrequency(self):
+    def calculateFrequency(self):
         self.freqMin = self.cf - self.span / 2
         self.freqMax = self.cf + self.span / 2
         self.freq = np.linspace(self.freqMin, self.freqMax, self.tracePoints)
